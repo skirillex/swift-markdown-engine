@@ -93,6 +93,8 @@ public struct MarkdownEditorConfiguration: Sendable {
     /// default: an unregistered name stays literal text. Order defines match
     /// precedence among directives; built-in constructs always win first.
     public var directives: [any MarkdownDirective]
+    /// How rendered tables are drawn.
+    public var table: TableStyle
     /// Marker configuration for ``directives`` (default `@`).
     public var directiveSettings: DirectiveRegistrySettings
 
@@ -125,8 +127,10 @@ public struct MarkdownEditorConfiguration: Sendable {
         extensions: [any MarkdownExtension] = [],
         cursorFollowsSpanInk: Bool = false,
         directives: [any MarkdownDirective] = [],
-        directiveSettings: DirectiveRegistrySettings = .default
+        directiveSettings: DirectiveRegistrySettings = .default,
+        table: TableStyle = .default
     ) {
+        self.table = table
         self.theme = theme
         self.services = services
         self.markers = markers
@@ -357,13 +361,22 @@ public struct TaskCheckboxStyle: Sendable {
     public var uncheckedSymbolName: String
     /// SF Symbol drawn for a checked task item (`[x]`).
     public var checkedSymbolName: String
+    /// How a checked item's text looks. `.hidden` collapses the whole line (the
+    /// caret still reveals it), so a list shows only what's left to do.
+    public var completed: CompletedTaskAppearance
+
+    public enum CompletedTaskAppearance: String, Sendable, CaseIterable {
+        case strikethrough, dimmed, hidden
+    }
 
     public init(
         uncheckedSymbolName: String = "square",
-        checkedSymbolName: String = "checkmark.square.fill"
+        checkedSymbolName: String = "checkmark.square.fill",
+        completed: CompletedTaskAppearance = .strikethrough
     ) {
         self.uncheckedSymbolName = uncheckedSymbolName
         self.checkedSymbolName = checkedSymbolName
+        self.completed = completed
     }
 
     public static let `default` = TaskCheckboxStyle()
@@ -433,6 +446,24 @@ public struct ThematicBreakStyle: Sendable {
     /// Centered mark drawn for a `___` break; nil draws the full-width rule.
     public var underscoreMark: Mark?
 
+    /// The rule's weight for a marker without a mark: thickness in points,
+    /// opacity of the rule colour, and an optional dotted pattern.
+    public struct Line: Sendable, Equatable {
+        public var thickness: CGFloat
+        public var opacity: CGFloat
+        public var dotted: Bool
+        public init(thickness: CGFloat = 1, opacity: CGFloat = 0.4, dotted: Bool = false) {
+            self.thickness = thickness
+            self.opacity = opacity
+            self.dotted = dotted
+        }
+        public static let regular = Line()
+    }
+    /// Rule drawn for `---` / `***` / `___` when that marker has no mark.
+    public var dashLine: Line = .regular
+    public var asteriskLine: Line = .regular
+    public var underscoreLine: Line = .regular
+
     public init(
         dashMark: Mark? = nil,
         asteriskMark: Mark? = nil,
@@ -457,6 +488,14 @@ extension ThematicBreakStyle {
         case 0x2A: return asteriskMark    // *
         case 0x5F: return underscoreMark  // _
         default: return nil
+        }
+    }
+
+    func line(forMarker marker: unichar) -> Line {
+        switch marker {
+        case 0x2A: return asteriskLine
+        case 0x5F: return underscoreLine
+        default: return dashLine
         }
     }
 }
@@ -771,5 +810,48 @@ extension MarkdownEditorConfiguration {
             case .scrolls:     return scrollers.hasVerticalScroller
             }
         }
+    }
+}
+
+
+// MARK: - Tables
+
+/// How rendered tables look. The defaults are the engine's historical look:
+/// square corners, a full grid, a lightly tinted header row.
+public struct TableStyle: Sendable, Equatable {
+    public var cellHorizontalPadding: CGFloat
+    public var cellVerticalPadding: CGFloat
+    /// Grid line width in points.
+    public var borderWidth: CGFloat
+    /// Grid line opacity, applied to the theme's muted text colour.
+    public var borderOpacity: CGFloat
+    /// Header row fill opacity, applied to the theme's muted text colour.
+    public var headerFillOpacity: CGFloat
+    public var cornerRadius: CGFloat
+    /// Lines between columns; off leaves only row lines inside the table.
+    public var columnSeparators: Bool
+
+    public init(
+        cellHorizontalPadding: CGFloat = 12,
+        cellVerticalPadding: CGFloat = 6,
+        borderWidth: CGFloat = 1,
+        borderOpacity: CGFloat = 0.5,
+        headerFillOpacity: CGFloat = 0.08,
+        cornerRadius: CGFloat = 0,
+        columnSeparators: Bool = true
+    ) {
+        self.cellHorizontalPadding = cellHorizontalPadding
+        self.cellVerticalPadding = cellVerticalPadding
+        self.borderWidth = borderWidth
+        self.borderOpacity = borderOpacity
+        self.headerFillOpacity = headerFillOpacity
+        self.cornerRadius = cornerRadius
+        self.columnSeparators = columnSeparators
+    }
+
+    public static let `default` = TableStyle()
+
+    var cacheKey: String {
+        "\(cellHorizontalPadding),\(cellVerticalPadding),\(borderWidth),\(borderOpacity),\(headerFillOpacity),\(cornerRadius),\(columnSeparators)"
     }
 }

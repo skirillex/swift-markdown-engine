@@ -26,6 +26,8 @@ extension NSAttributedString.Key {
     static let thematicBreakMark = NSAttributedString.Key("ThematicBreakMark")
     /// CGFloat — the mark's size as a multiple of the body font. Absent = 1.
     static let thematicBreakMarkScale = NSAttributedString.Key("ThematicBreakMarkScale")
+    /// `[thickness, opacity, dotted]` as `NSNumber`s for a rule (from `ThematicBreakStyle.Line`).
+    static let thematicBreakLine = NSAttributedString.Key("ThematicBreakLine")
     /// Int nesting level (1-based) of a blockquote line; the fragment
     /// paints that many vertical bars in the left gutter.
     static let blockquoteLevel = NSAttributedString.Key("BlockquoteLevel")
@@ -81,6 +83,9 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         var bounds = super.renderingSurfaceBounds
         // Task checkboxes too: the box draws left of the first glyph (marker
         // slot), outside the default text surface — TextKit would clip it.
+        if let box = blockBoxRect(at: .zero) {
+            bounds = bounds.union(box)
+        }
         if hasCodeBlockBackground || hasThematicBreak || hasBlockquote || hasTaskCheckbox {
             let containerWidth = textLayoutManager?.textContainer?.size.width ?? bounds.width
             // Extend left to container edge
@@ -104,6 +109,9 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
     override func draw(at point: CGPoint, in context: CGContext) {
         // 1. Code-block backgrounds (behind text)
         drawCodeBlockBackground(at: point, in: context)
+
+        // 1a. Block boxes (callouts), full width with rounded ends, behind text
+        drawBlockBox(at: point, in: context)
 
         // 1b. Line-box fills (`==highlight==` and friends), behind text
         drawBlockBackgrounds(at: point, in: context)
@@ -228,6 +236,50 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
             }
         }
         return found
+    }
+
+    /// The `.markdownBlockBox` rect for this fragment: the container width plus a
+    /// little room on each side, extended at the first and last line of a run.
+    private func blockBoxRect(at point: CGPoint) -> CGRect? {
+        guard let ts = textStorage, let range = fragmentNSRange, range.length > 0,
+              ts.attribute(.markdownBlockBox, at: range.location, effectiveRange: nil) is NSColor else { return nil }
+        let containerWidth = textLayoutManager?.textContainer?.size.width ?? layoutFragmentFrame.width
+        let startsRun = range.location == 0 || !(ts.attribute(.markdownBlockBox, at: range.location - 1, effectiveRange: nil) is NSColor)
+        let end = NSMaxRange(range)
+        let endsRun = end >= ts.length || !(ts.attribute(.markdownBlockBox, at: end, effectiveRange: nil) is NSColor)
+        let pad: CGFloat = 12, vpad: CGFloat = 8
+        var rect = CGRect(x: point.x - layoutFragmentFrame.origin.x - pad, y: point.y,
+                          width: containerWidth + pad * 2, height: layoutFragmentFrame.height)
+        if startsRun { rect.origin.y -= vpad; rect.size.height += vpad }
+        if endsRun { rect.size.height += vpad }
+        return rect
+    }
+
+    private func drawBlockBox(at point: CGPoint, in context: CGContext) {
+        guard let ts = textStorage, let range = fragmentNSRange, let rect = blockBoxRect(at: point),
+              let color = ts.attribute(.markdownBlockBox, at: range.location, effectiveRange: nil) as? NSColor else { return }
+        let startsRun = range.location == 0 || !(ts.attribute(.markdownBlockBox, at: range.location - 1, effectiveRange: nil) is NSColor)
+        let end = NSMaxRange(range)
+        let endsRun = end >= ts.length || !(ts.attribute(.markdownBlockBox, at: end, effectiveRange: nil) is NSColor)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        let r: CGFloat = 10
+        let path = CGMutablePath()
+        let tl = startsRun ? r : 0, bl = endsRun ? r : 0
+        path.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - tl, y: rect.minY))
+        if tl > 0 { path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY), tangent2End: CGPoint(x: rect.maxX, y: rect.minY + tl), radius: tl) }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bl))
+        if bl > 0 { path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY), tangent2End: CGPoint(x: rect.maxX - bl, y: rect.maxY), radius: bl) }
+        path.addLine(to: CGPoint(x: rect.minX + bl, y: rect.maxY))
+        if bl > 0 { path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - bl), radius: bl) }
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        if tl > 0 { path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY), tangent2End: CGPoint(x: rect.minX + tl, y: rect.minY), radius: tl) }
+        path.closeSubpath()
+        context.addPath(path)
+        context.setFillColor(color.cgColor)
+        context.fillPath()
     }
 
     private func drawCodeBlockBackground(at point: CGPoint, in context: CGContext) {
@@ -503,6 +555,9 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         let mark: String?
         let font: NSFont
         let drawOrigin: CGPoint
+        /// Rule opacity (of the rule colour) and dotted pattern; the rect's height is the thickness.
+        var opacity: CGFloat = 0.4
+        var dotted = false
     }
 
     /// Geometry for every thematic break in this fragment, in the same
@@ -593,11 +648,15 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
             } else {
                 // tb.origin.y is already relative to this layout fragment.
                 let centerY = point.y + tb.origin.y + tb.height / 2
+                let line = (ts.attribute(.thematicBreakLine, at: docStart, effectiveRange: nil) as? [NSNumber])?.map { CGFloat($0.doubleValue) }
+                let thickness = line.map { max(0.5, $0[0]) } ?? 1
                 out.append(ThematicBreakDecoration(
-                    rect: CGRect(x: containerX, y: centerY - 0.5, width: containerWidth, height: 1),
+                    rect: CGRect(x: containerX, y: centerY - thickness / 2, width: containerWidth, height: thickness),
                     mark: nil,
                     font: font,
-                    drawOrigin: CGPoint(x: containerX, y: centerY - 0.5)
+                    drawOrigin: CGPoint(x: containerX, y: centerY - thickness / 2),
+                    opacity: line?[1] ?? 0.4,
+                    dotted: (line?[2] ?? 0) > 0
                 ))
             }
         }
@@ -618,11 +677,21 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
         NSGraphicsContext.current = nsContext
 
-        let ruleColor = theme.strikethroughColor.withAlphaComponent(0.4)
         for decoration in decorations {
             guard let mark = decoration.mark else {
-                ruleColor.setFill()
-                NSBezierPath(rect: decoration.rect).fill()
+                theme.strikethroughColor.withAlphaComponent(decoration.opacity).setFill()
+                if decoration.dotted {
+                    // Round dots, one thickness apart times four, centred in the column.
+                    let d = max(decoration.rect.height, 2)
+                    let step = d * 4
+                    let count = Int(decoration.rect.width / step)
+                    let startX = decoration.rect.midX - CGFloat(count - 1) * step / 2
+                    for i in 0..<max(count, 1) {
+                        NSBezierPath(ovalIn: CGRect(x: startX + CGFloat(i) * step - d / 2, y: decoration.rect.midY - d / 2, width: d, height: d)).fill()
+                    }
+                } else {
+                    NSBezierPath(rect: decoration.rect).fill()
+                }
                 continue
             }
             // Ink, not a hairline: the rule colour is deliberately faint and

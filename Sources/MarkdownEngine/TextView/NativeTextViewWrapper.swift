@@ -550,7 +550,11 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         // (e.g. when the available wiki-link targets change). Cheap pointer-/
         // value-based comparison; full equality isn't required because the
         // embedder is the source of truth.
-        let newImageFingerprint = configuration.services.images.fingerprint()
+        // Folding and code-block images ride on the image fingerprint: either one
+        // changing needs the same restyle and re-measure.
+        let newImageFingerprint: AnyHashable = [configuration.services.images.fingerprint(),
+                                                configuration.services.folding.fingerprint(),
+                                                configuration.services.codeBlockImages.fingerprint()]
         let newWikiFingerprint = configuration.services.wikiLinks.fingerprint()
         let imageChanged = newImageFingerprint != context.coordinator.lastImageFingerprint
         let wikiChanged = newWikiFingerprint != context.coordinator.lastWikiFingerprint
@@ -748,7 +752,9 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         // arm the restore here or a remount would always open at the top.
         coordinator.armScrollRestore(for: documentId)
         coordinator.configuration = configuration
-        coordinator.lastImageFingerprint = configuration.services.images.fingerprint()
+        coordinator.lastImageFingerprint = [configuration.services.images.fingerprint(),
+                                            configuration.services.folding.fingerprint(),
+                                            configuration.services.codeBlockImages.fingerprint()] as AnyHashable
         coordinator.lastWikiFingerprint = configuration.services.wikiLinks.fingerprint()
         coordinator.onCodeBlockSelectionChange = onCodeBlockSelectionChange
         coordinator.onInlinePreviewKey = onInlinePreviewKey

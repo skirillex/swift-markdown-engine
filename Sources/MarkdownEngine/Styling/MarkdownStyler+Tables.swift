@@ -150,7 +150,7 @@ extension MarkdownStyler {
         // highlighted under one config and literal under another — those must
         // never share a cached image.
         let extensionKey = ctx.configuration.extensionRegistry.fingerprint
-        let key = (themeKeyPrefix(ctx: ctx, appearance: appearance) + "|x\(extensionKey)|w\(widthKey)|" + source) as NSString
+        let key = (themeKeyPrefix(ctx: ctx, appearance: appearance) + "|x\(extensionKey)|w\(widthKey)|s\(ctx.configuration.table.cacheKey)|" + source) as NSString
         if let cached = tableImageCache.object(forKey: key) {
             return (cached, false)
         }
@@ -162,7 +162,8 @@ extension MarkdownStyler {
             latex: ctx.services.latex,
             appearance: appearance,
             availableWidth: availableWidth,
-            extensions: ctx.configuration.extensions
+            extensions: ctx.configuration.extensions,
+            style: ctx.configuration.table
         )
         tableImageCache.setObject(image, forKey: key)
         return (image, true)
@@ -515,12 +516,13 @@ extension MarkdownStyler {
         latex: any LatexRenderer,
         appearance: NSAppearance,
         availableWidth: CGFloat,
-        extensions: [any MarkdownExtension] = []
+        extensions: [any MarkdownExtension] = [],
+        style: TableStyle = .default
     ) -> NSImage {
         let columnCount = table.alignments.count
-        let cellHPadding: CGFloat = 12
-        let cellVPadding: CGFloat = 6
-        let borderWidth: CGFloat = 1
+        let cellHPadding = style.cellHorizontalPadding
+        let cellVPadding = style.cellVerticalPadding
+        let borderWidth = style.borderWidth
         // Resolve under the real appearance: `.withAlphaComponent()` freezes a dynamic color otherwise.
         func mutedColor(alpha: CGFloat) -> NSColor {
             var resolved: NSColor = theme.mutedText
@@ -529,7 +531,7 @@ extension MarkdownStyler {
             }
             return resolved.withAlphaComponent(alpha)
         }
-        let borderColor = mutedColor(alpha: 0.5)
+        let borderColor = mutedColor(alpha: style.borderOpacity)
         let baseLineHeight: CGFloat = ceil(baseFont.ascender - baseFont.descender + baseFont.leading)
         let minColumnContentWidth: CGFloat = 16
 
@@ -669,34 +671,35 @@ extension MarkdownStyler {
         }
 
         let alignments = table.alignments
-        let headerFill = mutedColor(alpha: 0.08)
+        let headerFill = mutedColor(alpha: style.headerFillOpacity)
+        let radius = style.cornerRadius
 
         // Flipped image so AppKit handles the y-flip; a manual transform mirror would flip glyphs too.
         return NSImage(size: size, flipped: true) { _ in
+            let outerRect = NSRect(x: borderWidth / 2, y: borderWidth / 2,
+                                   width: size.width - borderWidth, height: size.height - borderWidth)
+            let outer = NSBezierPath(roundedRect: outerRect, xRadius: radius, yRadius: radius)
+            NSGraphicsContext.saveGraphicsState()
+            outer.addClip()
             // Header row fill
             headerFill.setFill()
             NSBezierPath(rect: NSRect(
-                x: borderWidth,
-                y: borderWidth,
-                width: size.width - 2 * borderWidth,
-                height: rowContentHeights[0] + 2 * cellVPadding
+                x: 0,
+                y: 0,
+                width: size.width,
+                height: borderWidth + rowContentHeights[0] + 2 * cellVPadding
             )).fill()
+            NSGraphicsContext.restoreGraphicsState()
 
             // Outer border
             borderColor.setStroke()
-            let outer = NSBezierPath(rect: NSRect(
-                x: borderWidth / 2,
-                y: borderWidth / 2,
-                width: size.width - borderWidth,
-                height: size.height - borderWidth
-            ))
             outer.lineWidth = borderWidth
             outer.stroke()
 
             // Internal separators
             let separators = NSBezierPath()
             separators.lineWidth = borderWidth
-            for i in 1..<columnCount {
+            for i in 1..<columnCount where style.columnSeparators {
                 let x = columnLeft[i] - borderWidth / 2
                 separators.move(to: NSPoint(x: x, y: 0))
                 separators.line(to: NSPoint(x: x, y: size.height))

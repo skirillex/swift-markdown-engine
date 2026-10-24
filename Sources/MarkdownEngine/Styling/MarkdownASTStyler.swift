@@ -200,10 +200,14 @@ enum MarkdownASTStyler {
             .foregroundColor: NSColor.clear,
             .thematicBreak: true,
         ]
-        let mark = ctx.config.thematicBreak.mark(forMarker: thematicBreakMarker(in: hr, ctx: ctx))
+        let marker = thematicBreakMarker(in: hr, ctx: ctx)
+        let mark = ctx.config.thematicBreak.mark(forMarker: marker)
         if let mark {
             tags[.thematicBreakMark] = mark.text
             tags[.thematicBreakMarkScale] = mark.scale
+        } else {
+            let line = ctx.config.thematicBreak.line(forMarker: marker)
+            tags[.thematicBreakLine] = [line.thickness, line.opacity, line.dotted ? 1 : 0].map { NSNumber(value: Double($0)) }
         }
         attrs.append((hr, tags))
 
@@ -546,10 +550,24 @@ enum MarkdownASTStyler {
             attrs.append((postGap, [.foregroundColor: NSColor.clear, .font: ctx.inlineMarkerFont]))
         }
         if item.checked, NSMaxRange(item.range) > NSMaxRange(box) {
-            attrs.append((NSRange(location: NSMaxRange(box), length: NSMaxRange(item.range) - NSMaxRange(box)), [
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                .strikethroughColor: ctx.theme.strikethroughColor,
-            ]))
+            let content = NSRange(location: NSMaxRange(box), length: NSMaxRange(item.range) - NSMaxRange(box))
+            switch ctx.config.taskCheckbox.completed {
+            case .strikethrough:
+                attrs.append((content, [
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .strikethroughColor: ctx.theme.strikethroughColor,
+                ]))
+            case .dimmed:
+                attrs.append((content, [.foregroundColor: ctx.theme.mutedText]))
+            case .hidden:
+                // The whole line, newline included, unless the caret is on it.
+                let line = ctx.ns.lineRange(for: NSRange(location: item.range.location, length: 0))
+                if !(NSLocationInRange(ctx.caret, line) || ctx.caret == NSMaxRange(item.range)) {
+                    attrs.append((line, MarkdownStyler.collapsedAttributes()))
+                } else {
+                    attrs.append((content, [.foregroundColor: ctx.theme.mutedText]))
+                }
+            }
         }
     }
 
