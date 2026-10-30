@@ -378,6 +378,29 @@ public struct TaskCheckboxStyle: Sendable {
     /// How a checked item's text looks. `.hidden` collapses the whole line (the
     /// caret still reveals it), so a list shows only what's left to do.
     public var completed: CompletedTaskAppearance
+    /// A drawn box instead of the SF Symbols: nil keeps the symbols.
+    public var box: Box?
+
+    /// A drawn checkbox: a rounded square (side ≈ 0.93 em, corner radius a quarter of
+    /// the side) with a border in the body text colour while open, and filled with a
+    /// check when done.
+    public struct Box: Sendable {
+        /// Fill of a checked box.
+        public var checkedFill: NSColor
+        /// The check drawn on `checkedFill` (often the page colour).
+        public var checkmark: NSColor
+        /// Fill of an open box.
+        public var uncheckedFill: NSColor
+        /// Opacity of the open box's border, in the body text colour.
+        public var borderOpacity: CGFloat
+
+        public init(checkedFill: NSColor, checkmark: NSColor, uncheckedFill: NSColor = .clear, borderOpacity: CGFloat = 0.2) {
+            self.checkedFill = checkedFill
+            self.checkmark = checkmark
+            self.uncheckedFill = uncheckedFill
+            self.borderOpacity = borderOpacity
+        }
+    }
 
     public enum CompletedTaskAppearance: String, Sendable, CaseIterable {
         case strikethrough, dimmed, hidden
@@ -386,11 +409,13 @@ public struct TaskCheckboxStyle: Sendable {
     public init(
         uncheckedSymbolName: String = "square",
         checkedSymbolName: String = "checkmark.square.fill",
-        completed: CompletedTaskAppearance = .strikethrough
+        completed: CompletedTaskAppearance = .strikethrough,
+        box: Box? = nil
     ) {
         self.uncheckedSymbolName = uncheckedSymbolName
         self.checkedSymbolName = checkedSymbolName
         self.completed = completed
+        self.box = box
     }
 
     public static let `default` = TaskCheckboxStyle()
