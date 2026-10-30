@@ -897,6 +897,11 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
             let configuration = (textLayoutManager?.textContainer?.textView as? NativeTextView)?.configuration
                 ?? .default
             let style = configuration.taskCheckbox
+            if let box = style.box {
+                Self.drawBox(box, checked: isChecked, in: boxRect, side: (font.pointSize * 14 / 15).rounded(),
+                             ink: configuration.theme.bodyText, scale: scale)
+                return
+            }
             let symbolName = isChecked ? style.checkedSymbolName : style.uncheckedSymbolName
             let fallbackName = isChecked
                 ? TaskCheckboxStyle.default.checkedSymbolName
@@ -910,6 +915,40 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
                 let symbol = baseSymbol.withSymbolConfiguration(symbolConfig) ?? baseSymbol
                 symbol.draw(in: iconRect)
             }
+        }
+    }
+}
+
+extension MarkdownTextLayoutFragment {
+    /// `TaskCheckboxStyle.Box`: a rounded square centred in the checkbox slot. Open: a
+    /// border at `side / 7` in the ink colour; done: filled, with a check stroked across it.
+    static func drawBox(_ box: TaskCheckboxStyle.Box, checked: Bool, in slot: CGRect, side: CGFloat,
+                        ink: NSColor, scale: CGFloat) {
+        let side = min(side, slot.width)
+        func pixel(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
+        let rect = CGRect(x: pixel(slot.midX - side / 2), y: pixel(slot.midY - side / 2), width: side, height: side)
+        let radius = side / 4
+        if checked {
+            box.checkedFill.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            let check = NSBezierPath()
+            check.move(to: CGPoint(x: rect.minX + side * 0.26, y: rect.minY + side * 0.52))
+            check.line(to: CGPoint(x: rect.minX + side * 0.43, y: rect.minY + side * 0.69))
+            check.line(to: CGPoint(x: rect.minX + side * 0.75, y: rect.minY + side * 0.33))
+            check.lineWidth = side * 0.14
+            check.lineCapStyle = .round
+            check.lineJoinStyle = .round
+            box.checkmark.setStroke()
+            check.stroke()
+        } else {
+            let border = side / 7
+            let inner = rect.insetBy(dx: border / 2, dy: border / 2)
+            let path = NSBezierPath(roundedRect: inner, xRadius: radius - border / 2, yRadius: radius - border / 2)
+            box.uncheckedFill.setFill()
+            path.fill()
+            path.lineWidth = border
+            ink.withAlphaComponent(box.borderOpacity).setStroke()
+            path.stroke()
         }
     }
 }
