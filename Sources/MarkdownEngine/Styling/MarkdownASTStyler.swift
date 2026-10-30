@@ -497,7 +497,8 @@ enum MarkdownASTStyler {
             let syntax = NSRange(location: item.marker.location,
                                  length: item.contentRange.location - item.marker.location)
             if NSLocationInRange(ctx.caret, syntax) { return }
-            attrs.append((item.marker, [.bulletMarker: true, .foregroundColor: NSColor.clear]))
+            attrs.append((item.marker, [.bulletMarker: true, .bulletLevel: MarkdownLists.indentLevel(from: ws),
+                                        .foregroundColor: NSColor.clear]))
         } else if orderedOverlayActive, let displayNumber {
             // Hide the ENTIRE source marker (digits + dot) as one unit and paint
             // the whole display marker "N." over it, so the dot travels with the
@@ -529,6 +530,9 @@ enum MarkdownASTStyler {
                 markerAttrs[.kern] = (displayW - hiddenW) / CGFloat(max(1, item.marker.length))
             }
             attrs.append((item.marker, markerAttrs))
+        } else if item.ordered, let color = ctx.theme.listMarker {
+            // A source number left as text takes the marker colour too.
+            attrs.append((item.marker, [.foregroundColor: color]))
         }
     }
 
@@ -696,6 +700,7 @@ enum MarkdownASTStyler {
             headingPara.paragraphSpacing = ctx.baseParagraphSpacing
             attrs.append((ctx.ns.paragraphRange(for: range), [.paragraphStyle: headingPara]))
             attrs.append((range, [.font: headingFont]))
+            if let color = ctx.theme.headingText { attrs.append((range, [.foregroundColor: color])) }
             for marker in markers {
                 attrs.append((marker, [.foregroundColor: ctx.theme.headingMarker]))
             }
@@ -797,7 +802,7 @@ enum MarkdownASTStyler {
             attrs.append((ctx.ns.paragraphRange(for: tokenRange), [.paragraphStyle: para]))
 
             if contentRange.length > 0 {
-                attrs.append((contentRange, [.foregroundColor: ctx.theme.mutedText]))
+                attrs.append((contentRange, [.foregroundColor: ctx.theme.blockquoteText ?? ctx.theme.mutedText]))
             }
             if ctx.isActive(tokenRange) {
                 attrs.append((markerRange, [.foregroundColor: ctx.theme.mutedText]))

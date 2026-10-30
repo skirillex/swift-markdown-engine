@@ -79,6 +79,19 @@ public struct MarkdownEditorTheme: Sendable {
     /// Background color used for `==highlight==` inline markup.
     public var highlightColor: NSColor
 
+    // MARK: Accents (optional; nil keeps the default look)
+
+    /// Color for the drawn bullet (`•`) and ordered-list number. Nil: `bodyText`.
+    public var listMarker: NSColor?
+    /// Color for blockquote bars in the left gutter. Nil: `mutedText` at half alpha.
+    public var blockquoteBar: NSColor?
+    /// Color for blockquote text. Nil: `mutedText`.
+    public var blockquoteText: NSColor?
+    /// Color for heading text (not its `#` markers). Nil: `bodyText`.
+    public var headingText: NSColor?
+    /// Insertion point color. Nil: `bodyText`.
+    public var caret: NSColor?
+
     // MARK: Init
 
     public init(
@@ -93,7 +106,12 @@ public struct MarkdownEditorTheme: Sendable {
         latexLightModeText: NSColor = .black,
         latexDarkModeText: NSColor = .white,
         strikethroughColor: NSColor = .labelColor,
-        highlightColor: NSColor = .systemOrange.withAlphaComponent(0.4)
+        highlightColor: NSColor = .systemOrange.withAlphaComponent(0.4),
+        listMarker: NSColor? = nil,
+        blockquoteBar: NSColor? = nil,
+        blockquoteText: NSColor? = nil,
+        headingText: NSColor? = nil,
+        caret: NSColor? = nil
     ) {
         self.bodyText = bodyText
         self.mutedText = mutedText
@@ -107,6 +125,11 @@ public struct MarkdownEditorTheme: Sendable {
         self.latexDarkModeText = latexDarkModeText
         self.strikethroughColor = strikethroughColor
         self.highlightColor = highlightColor
+        self.listMarker = listMarker
+        self.blockquoteBar = blockquoteBar
+        self.blockquoteText = blockquoteText
+        self.headingText = headingText
+        self.caret = caret
     }
 
     /// System-native palette built from `NSColor` dynamic system colors.

@@ -274,7 +274,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         textView.maxOverscrollPoints = configuration.overscroll.maxPoints
         textView.minOverscrollPoints = configuration.overscroll.minPoints
         context.coordinator.configuration = configuration
-        textView.insertionPointColor = configuration.theme.bodyText
+        textView.insertionPointColor = configuration.theme.caret ?? configuration.theme.bodyText
         textView.isEditable = isEditable
         textView.isSelectable = true
         textView.isRichText = true
@@ -578,7 +578,7 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
         // Keep the caret ink the selection handler resolved (an extension span
         // can invert it); a plain bodyText reset here stomps it on every pass.
         textView.insertionPointColor = isEditable
-            ? (context.coordinator.resolvedCaretColor ?? context.coordinator.configuration.theme.bodyText)
+            ? (context.coordinator.resolvedCaretColor ?? context.coordinator.configuration.theme.caret ?? context.coordinator.configuration.theme.bodyText)
             : .clear
         let fontChanged = (context.coordinator.fontName != fontName) || (context.coordinator.fontSize != fontSize)
         if let pendingDirectiveCompletion {

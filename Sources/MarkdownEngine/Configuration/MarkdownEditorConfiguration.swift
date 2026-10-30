@@ -328,19 +328,33 @@ public struct ListStyle: Sendable {
     public var maximumNestingLevel: Int
     /// Extra line height added on top of the default to give list items room.
     public var extraLineHeight: CGFloat
+    /// The glyph drawn for a bullet at each nesting level (top level first); deeper
+    /// levels reuse the last one.
+    public var bulletGlyphs: [String]
+    /// Size of the drawn bullet glyph relative to the text, centred on the x-height.
+    public var bulletScale: CGFloat
 
     public init(
         helpersEnabled: Bool = true,
         autoClosePairsEnabled: Bool = true,
         indentPerLevel: CGFloat = 27.5,
         maximumNestingLevel: Int = 3,
-        extraLineHeight: CGFloat = 2
+        extraLineHeight: CGFloat = 2,
+        bulletGlyphs: [String] = ["•"],
+        bulletScale: CGFloat = 1
     ) {
         self.helpersEnabled = helpersEnabled
         self.autoClosePairsEnabled = autoClosePairsEnabled
         self.indentPerLevel = indentPerLevel
         self.maximumNestingLevel = maximumNestingLevel
         self.extraLineHeight = extraLineHeight
+        self.bulletGlyphs = bulletGlyphs.isEmpty ? ["•"] : bulletGlyphs
+        self.bulletScale = bulletScale
+    }
+
+    /// The bullet glyph for a nesting level (0 = top).
+    public func bulletGlyph(level: Int) -> String {
+        bulletGlyphs[min(max(level, 0), bulletGlyphs.count - 1)]
     }
 
     public static let `default` = ListStyle()

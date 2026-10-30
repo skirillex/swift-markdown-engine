@@ -34,6 +34,9 @@ extension NSAttributedString.Key {
     /// Marks a bullet-list marker char (`-`/`*`/`+`) whose glyph is hidden so
     /// the fragment can paint a `•` in its place. Set to `true`.
     static let bulletMarker = NSAttributedString.Key("BulletListMarker")
+    /// Int nesting level (0 = top) of a bullet marker; picks its glyph from
+    /// `ListStyle.bulletGlyphs`.
+    static let bulletLevel = NSAttributedString.Key("BulletListLevel")
     static let orderedMarker = NSAttributedString.Key("OrderedListMarker")
     /// CGFloat — natural image width; presence flags block as overlay-rendered.
     static let scrollableBlockNaturalWidth = NSAttributedString.Key("ScrollableBlockNaturalWidth")
@@ -726,7 +729,7 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
         defer { NSGraphicsContext.restoreGraphicsState() }
         let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
         NSGraphicsContext.current = nsContext
-        theme.mutedText.withAlphaComponent(0.5).setFill()
+        (theme.blockquoteBar ?? theme.mutedText.withAlphaComponent(0.5)).setFill()
 
         let fragLocation = fragmentNSRange?.location ?? 0
         let leftEdge = point.x - layoutFragmentFrame.origin.x
@@ -789,15 +792,23 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
             // an empty slot wherever the selection anchor wasn't in the marker.)
             let isSelected = selectionRanges.contains(where: { NSIntersectionRange($0, attrRange).length > 0 })
             let raw = storageString.substring(with: attrRange)
-            let glyph = (isSelected ? raw : "•") as NSString
-            let glyphAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: theme.bodyText]
+            let level = ts.attribute(.bulletLevel, at: attrRange.location, effectiveRange: nil) as? Int ?? 0
+            let configuration = (self.textLayoutManager?.textContainer?.textView as? NativeTextView)?.configuration
+            let bullet = configuration?.lists.bulletGlyph(level: level) ?? "•"
+            let glyph = (isSelected ? raw : bullet) as NSString
+            // A scaled bullet keeps its centre on the text's x-height centre.
+            let scale = isSelected ? 1 : (configuration?.lists.bulletScale ?? 1)
+            let glyphFont = scale == 1 ? font : (NSFont(descriptor: font.fontDescriptor, size: font.pointSize * scale) ?? font)
+            let glyphAttrs: [NSAttributedString.Key: Any] = [.font: glyphFont, .foregroundColor: theme.listMarker ?? theme.bodyText]
 
             let markerWidth = (raw as NSString).size(withAttributes: [.font: font]).width
             let glyphWidth = glyph.size(withAttributes: glyphAttrs).width
-            let xOffset = max(0, (markerWidth - glyphWidth) / 2)
+            // Centred on the marker's slot; a wider (scaled-up) glyph overhangs both sides.
+            let xOffset = (markerWidth - glyphWidth) / 2
             // Flipped context: text origin is its top edge, baseline sits one
             // ascent below — so top = baseline − ascent aligns the glyph.
-            let topY = pos.baselineY - font.ascender
+            let baselineY = pos.baselineY - (font.xHeight - glyphFont.xHeight) / 2
+            let topY = baselineY - glyphFont.ascender
             glyph.draw(at: CGPoint(x: pos.x + xOffset, y: topY), withAttributes: glyphAttrs)
         }
     }
@@ -831,7 +842,7 @@ final class MarkdownTextLayoutFragment: NSTextLayoutFragment {
                 ?? textView?.font
                 ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
             let glyph = number as NSString
-            let glyphAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: theme.bodyText]
+            let glyphAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: theme.listMarker ?? theme.bodyText]
             let topY = pos.baselineY - font.ascender
             glyph.draw(at: CGPoint(x: pos.x, y: topY), withAttributes: glyphAttrs)
         }

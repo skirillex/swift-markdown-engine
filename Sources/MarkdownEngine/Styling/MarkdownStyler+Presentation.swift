@@ -40,6 +40,7 @@ extension MarkdownStyler {
             .taskCheckbox: NSNull(),
             .thematicBreak: false,
             .bulletMarker: NSNull(),
+            .bulletLevel: NSNull(),
             .orderedMarker: NSNull(),
             .blockquoteLevel: 0,
             .strikethroughStyle: 0,
