@@ -343,14 +343,22 @@ public struct MarkdownEditorServices: Sendable {
     public var syntaxHighlighter: any SyntaxHighlighter
     public var latex: any LatexRenderer
     public var bus: MarkdownEditorBus
+    /// Which heading sections are folded (hidden below their heading).
+    public var folding: any MarkdownFoldingProvider
+    /// Draws fenced code blocks of some languages as images (e.g. diagrams).
+    public var codeBlockImages: any CodeBlockImageRenderer
 
     public init(
         wikiLinks: any WikiLinkResolver = NoOpWikiLinkResolver(),
         images: any EmbeddedImageProvider = NoOpEmbeddedImageProvider(),
         syntaxHighlighter: any SyntaxHighlighter = PlainTextSyntaxHighlighter(),
         latex: any LatexRenderer = NoOpLatexRenderer(),
-        bus: MarkdownEditorBus = .default
+        bus: MarkdownEditorBus = .default,
+        folding: any MarkdownFoldingProvider = NoFolding(),
+        codeBlockImages: any CodeBlockImageRenderer = NoCodeBlockImages()
     ) {
+        self.folding = folding
+        self.codeBlockImages = codeBlockImages
         self.wikiLinks = wikiLinks
         self.images = images
         self.syntaxHighlighter = syntaxHighlighter

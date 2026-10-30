@@ -200,10 +200,14 @@ enum MarkdownASTStyler {
             .foregroundColor: NSColor.clear,
             .thematicBreak: true,
         ]
-        let mark = ctx.config.thematicBreak.mark(forMarker: thematicBreakMarker(in: hr, ctx: ctx))
+        let marker = thematicBreakMarker(in: hr, ctx: ctx)
+        let mark = ctx.config.thematicBreak.mark(forMarker: marker)
         if let mark {
             tags[.thematicBreakMark] = mark.text
             tags[.thematicBreakMarkScale] = mark.scale
+        } else {
+            let line = ctx.config.thematicBreak.line(forMarker: marker)
+            tags[.thematicBreakLine] = [line.thickness, line.opacity, line.dotted ? 1 : 0].map { NSNumber(value: Double($0)) }
         }
         attrs.append((hr, tags))
 
@@ -493,7 +497,8 @@ enum MarkdownASTStyler {
             let syntax = NSRange(location: item.marker.location,
                                  length: item.contentRange.location - item.marker.location)
             if NSLocationInRange(ctx.caret, syntax) { return }
-            attrs.append((item.marker, [.bulletMarker: true, .foregroundColor: NSColor.clear]))
+            attrs.append((item.marker, [.bulletMarker: true, .bulletLevel: MarkdownLists.indentLevel(from: ws),
+                                        .foregroundColor: NSColor.clear]))
         } else if orderedOverlayActive, let displayNumber {
             // Hide the ENTIRE source marker (digits + dot) as one unit and paint
             // the whole display marker "N." over it, so the dot travels with the
@@ -525,6 +530,9 @@ enum MarkdownASTStyler {
                 markerAttrs[.kern] = (displayW - hiddenW) / CGFloat(max(1, item.marker.length))
             }
             attrs.append((item.marker, markerAttrs))
+        } else if item.ordered, let color = ctx.theme.listMarker {
+            // A source number left as text takes the marker colour too.
+            attrs.append((item.marker, [.foregroundColor: color]))
         }
     }
 
@@ -546,10 +554,24 @@ enum MarkdownASTStyler {
             attrs.append((postGap, [.foregroundColor: NSColor.clear, .font: ctx.inlineMarkerFont]))
         }
         if item.checked, NSMaxRange(item.range) > NSMaxRange(box) {
-            attrs.append((NSRange(location: NSMaxRange(box), length: NSMaxRange(item.range) - NSMaxRange(box)), [
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                .strikethroughColor: ctx.theme.strikethroughColor,
-            ]))
+            let content = NSRange(location: NSMaxRange(box), length: NSMaxRange(item.range) - NSMaxRange(box))
+            switch ctx.config.taskCheckbox.completed {
+            case .strikethrough:
+                attrs.append((content, [
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .strikethroughColor: ctx.theme.strikethroughColor,
+                ]))
+            case .dimmed:
+                attrs.append((content, [.foregroundColor: ctx.theme.mutedText]))
+            case .hidden:
+                // The whole line, newline included, unless the caret is on it.
+                let line = ctx.ns.lineRange(for: NSRange(location: item.range.location, length: 0))
+                if !(NSLocationInRange(ctx.caret, line) || ctx.caret == NSMaxRange(item.range)) {
+                    attrs.append((line, MarkdownStyler.collapsedAttributes()))
+                } else {
+                    attrs.append((content, [.foregroundColor: ctx.theme.mutedText]))
+                }
+            }
         }
     }
 
@@ -678,6 +700,7 @@ enum MarkdownASTStyler {
             headingPara.paragraphSpacing = ctx.baseParagraphSpacing
             attrs.append((ctx.ns.paragraphRange(for: range), [.paragraphStyle: headingPara]))
             attrs.append((range, [.font: headingFont]))
+            if let color = ctx.theme.headingText { attrs.append((range, [.foregroundColor: color])) }
             for marker in markers {
                 attrs.append((marker, [.foregroundColor: ctx.theme.headingMarker]))
             }
@@ -779,7 +802,7 @@ enum MarkdownASTStyler {
             attrs.append((ctx.ns.paragraphRange(for: tokenRange), [.paragraphStyle: para]))
 
             if contentRange.length > 0 {
-                attrs.append((contentRange, [.foregroundColor: ctx.theme.mutedText]))
+                attrs.append((contentRange, [.foregroundColor: ctx.theme.blockquoteText ?? ctx.theme.mutedText]))
             }
             if ctx.isActive(tokenRange) {
                 attrs.append((markerRange, [.foregroundColor: ctx.theme.mutedText]))
